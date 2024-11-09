@@ -1,57 +1,60 @@
 import sys
-# sys.path.append("../")
-sys.path.append("./")
+sys.path.append("../")
+
 import gradio as gr
+
 import torch
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+dtype = torch.float16
+
+import random
+import numpy as np
+
+import cv2
+from PIL import Image
+
+from transformers import BlipProcessor, BlipForConditionalGeneration as BlipGenerator
+from transformers import AutoImageProcessor, AutoModel
+from diffusers import AutoencoderKL, ControlNetModel, \
+                    StableDiffusionXLControlNetPipeline as SDXLControlnetPipeline
+
 from ip_adapter.utils import BLOCKS as BLOCKS
 from ip_adapter.utils import controlnet_BLOCKS as controlnet_BLOCKS
 from ip_adapter.utils import resize_content
-import cv2
-import numpy as np
-import random
-from PIL import Image
-from transformers import AutoImageProcessor, AutoModel
-from diffusers import (
-    AutoencoderKL,
-    ControlNetModel,
-    StableDiffusionXLControlNetPipeline,
-
-)
 from ip_adapter import CSGO
-from transformers import BlipProcessor, BlipForConditionalGeneration
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+# Model Path
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
-image_encoder_path = "h94/IP-Adapter/sdxl_models/image_encoder"
-csgo_ckpt ='InstantX/CSGO/csgo_4_32.bin'
-pretrained_vae_name_or_path ='madebyollin/sdxl-vae-fp16-fix'
 controlnet_path = "TTPlanet/TTPLanet_SDXL_Controlnet_Tile_Realistic"
-weight_dtype = torch.float16
+auto_encoder_path = "madebyollin/sdxl-vae-fp16-fix"
+image_encoder_path = "h94/IP-Adapter/sdxl_models/image_encoder"
+image_caption_path = "Salesforce/blip-image-captioning-large"
 
+cs_adapter_path = 'InstantX/CSGO/csgo_4_32.bin'
+ip_adapter_path = 'sdxl_models/ip-adapter_sdxl.bin'
 
-
-
-vae = AutoencoderKL.from_pretrained(pretrained_vae_name_or_path,torch_dtype=torch.float16)
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16,use_safetensors=True)
-pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path,
-    controlnet=controlnet,
-    torch_dtype=torch.float16,
-    add_watermarker=False,
-    vae=vae
-)
+auto_encoder = AutoencoderKL.from_pretrained(auto_encoder_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16, use_safetensors=True)
+pipe = SDXLControlnetPipeline.from_pretrained(base_model_path, torch_dtype=torch.float16,
+                                                                controlnet=controlnet,
+                                                                       vae=auto_encoder, add_watermarker=False)
 pipe.enable_vae_tiling()
-blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large").to(device)
+
+blip_processor = BlipProcessor.from_pretrained(image_caption_path)
+blip_generator = BlipGenerator.from_pretrained(image_caption_path).to(device)
 
 target_content_blocks = BLOCKS['content']
 target_style_blocks = BLOCKS['style']
+
 controlnet_target_content_blocks = controlnet_BLOCKS['content']
 controlnet_target_style_blocks = controlnet_BLOCKS['style']
 
-csgo = CSGO(pipe, image_encoder_path, csgo_ckpt, device, num_content_tokens=4, num_style_tokens=32,
-            target_content_blocks=target_content_blocks, target_style_blocks=target_style_blocks,
+csgo = CSGO(pipe, image_encoder_path, cs_adapter_path, device, 
+            num_content_tokens=4, 
+            num_style_tokens=32,
+            target_content_blocks=target_content_blocks, 
+            target_style_blocks=target_style_blocks,
             controlnet_adapter=True,
             controlnet_target_content_blocks=controlnet_target_content_blocks,
             controlnet_target_style_blocks=controlnet_target_style_blocks,
@@ -59,22 +62,20 @@ csgo = CSGO(pipe, image_encoder_path, csgo_ckpt, device, num_content_tokens=4, n
             style_model_resampler=True,
             )
 
+
 MAX_SEED = np.iinfo(np.int32).max
 
-def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
-    if randomize_seed:
+def randomize_seed_fn(seed: int, random_seed: bool) -> int:
+    if random_seed:
         seed = random.randint(0, MAX_SEED)
     return seed
-
-
-
 
 
 def get_example():
     case = [
         [
-            "./assets/img_0.png",
-            './assets/img_1.png',
+            "./examples/img_0.png",
+            './examples/img_1.png',
             "Image-Driven Style Transfer",
             "there is a small house with a sheep statue on top of it",
             1.0,
@@ -82,17 +83,17 @@ def get_example():
             1.0,
         ],
         [
-         None,
-         './assets/img_1.png',
+            None,
+            './examples/img_1.png',
             "Text-Driven Style Synthesis",
-         "a cat",
+            "a cat",
             1.0,
-         0.01,
+            0.01,
             1.0
          ],
         [
             None,
-            './assets/img_2.png',
+            './examples/img_2.png',
             "Text-Driven Style Synthesis",
             "a building",
             0.5,
@@ -100,8 +101,8 @@ def get_example():
             1.0
         ],
         [
-            "./assets/img_0.png",
-            './assets/img_1.png',
+            "./examples/img_0.png",
+            './examples/img_1.png',
             "Text Edit-Driven Style Synthesis",
             "there is a small house",
             1.0,
@@ -126,10 +127,7 @@ def run_for_examples(content_image_pil,style_image_pil,target, prompt,scale_c_co
         seed=42,
         target=target,
     )
-def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
-    if randomize_seed:
-        seed = random.randint(0, MAX_SEED)
-    return seed
+
 
 def image_grid(imgs, rows, cols):
     assert len(imgs) == rows * cols
@@ -140,7 +138,10 @@ def image_grid(imgs, rows, cols):
 
     for i, img in enumerate(imgs):
         grid.paste(img, box=(i % cols * w, i // cols * h))
+
     return grid
+
+
 def create_image(content_image_pil,
                  style_image_pil,
                  prompt,
@@ -153,7 +154,6 @@ def create_image(content_image_pil,
                  seed,
                  target="Image-Driven Style Transfer",
 ):
-
     if content_image_pil is None:
         content_image_pil = Image.fromarray(
             np.zeros((1024, 1024, 3), dtype=np.uint8)).convert('RGB')
@@ -161,66 +161,42 @@ def create_image(content_image_pil,
     if prompt is None or prompt == '':
         with torch.no_grad():
             inputs = blip_processor(content_image_pil, return_tensors="pt").to(device)
-            out = blip_model.generate(**inputs)
-            prompt = blip_processor.decode(out[0], skip_special_tokens=True)
-    width, height, content_image = resize_content(content_image_pil)
-    style_image = style_image_pil
-    neg_content_prompt='text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry'
-    if target =="Image-Driven Style Transfer":
-        with torch.no_grad():
-            images = csgo.generate(pil_content_image=content_image, pil_style_image=style_image,
-                                   prompt=prompt,
-                                   negative_prompt=neg_content_prompt,
-                                   height=height,
-                                   width=width,
-                                   content_scale=scale_c,
-                                   style_scale=scale_s,
-                                   guidance_scale=guidance_scale,
-                                   num_images_per_prompt=num_samples,
-                                   num_inference_steps=num_inference_steps,
-                                   num_samples=1,
-                                   seed=seed,
-                                   image=content_image.convert('RGB'),
-                                   controlnet_conditioning_scale=scale_c_controlnet,
-                                   )
+            outputs = blip_generator.generate(**inputs)
+            prompt = blip_processor.decode(outputs[0], skip_special_tokens=True)
 
-    elif target =="Text-Driven Style Synthesis":
+    width, height, \
+    content_image = resize_content(content_image_pil)
+    style_image = style_image_pil
+
+    neg_content_prompt = 'text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry'
+    
+    if target == "Image-Driven Style Transfer":
+        pass
+
+    elif target == "Text-Driven Style Synthesis":
         content_image = Image.fromarray(
             np.zeros((1024, 1024, 3), dtype=np.uint8)).convert('RGB')
-        with torch.no_grad():
-            images = csgo.generate(pil_content_image=content_image, pil_style_image=style_image,
-                                   prompt=prompt,
-                                   negative_prompt="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
-                                   height=height,
-                                   width=width,
-                                   content_scale=scale_c,
-                                   style_scale=scale_s,
-                                   guidance_scale=7,
-                                   num_images_per_prompt=num_samples,
-                                   num_inference_steps=num_inference_steps,
-                                   num_samples=1,
-                                   seed=42,
-                                   image=content_image.convert('RGB'),
-                                   controlnet_conditioning_scale=scale_c_controlnet,
-                                   )
-    elif target =="Text Edit-Driven Style Synthesis":
 
-        with torch.no_grad():
-            images = csgo.generate(pil_content_image=content_image, pil_style_image=style_image,
-                                   prompt=prompt,
-                                   negative_prompt=neg_content_prompt,
-                                   height=height,
-                                   width=width,
-                                   content_scale=scale_c,
-                                   style_scale=scale_s,
-                                   guidance_scale=guidance_scale,
-                                   num_images_per_prompt=num_samples,
-                                   num_inference_steps=num_inference_steps,
-                                   num_samples=1,
-                                   seed=seed,
-                                   image=content_image.convert('RGB'),
-                                   controlnet_conditioning_scale=scale_c_controlnet,
-                                   )
+    elif target == "Text Edit-Driven Style Synthesis":
+        pass
+
+    with torch.no_grad():
+        images = csgo.generate( pil_content_image=content_image, 
+                                pil_style_image=style_image,
+                                prompt=prompt,
+                       negative_prompt=neg_content_prompt,
+                                height=height,
+                                width=width,
+                                content_scale=scale_c,
+                                style_scale=scale_s,
+                                guidance_scale=guidance_scale,
+                                num_images_per_prompt=num_samples,
+                                num_inference_steps=num_inference_steps,
+                                num_samples=1,
+                                seed=seed,
+                                image=content_image.convert('RGB'),
+                                controlnet_conditioning_scale=scale_c_controlnet,
+                                )
 
     return [image_grid(images, 1, num_samples)]
 
@@ -286,28 +262,26 @@ with block:
                 with gr.Row():
                     with gr.Column():
                         content_image_pil = gr.Image(label="Content Image (optional)", type='pil')
-                        style_image_pil = gr.Image(label="Style Image", type='pil')
+                        style_image_pil = gr.Image(label="Style Image (obligatory)", type='pil')
 
                 target = gr.Radio(["Image-Driven Style Transfer", "Text-Driven Style Synthesis", "Text Edit-Driven Style Synthesis"],
-                                  value="Image-Driven Style Transfer",
-                                  label="task")
+                                  value="Image-Driven Style Transfer", label="task")
 
                 prompt = gr.Textbox(label="Prompt",
                                     value="there is a small house with a sheep statue on top of it")
 
-                scale_c_controlnet = gr.Slider(minimum=0, maximum=2.0, step=0.01, value=0.6,
-                                               label="Content Scale for controlnet")
-                scale_c = gr.Slider(minimum=0, maximum=2.0, step=0.01, value=0.6, label="Content Scale for IPA")
-
+                scale_c_controlnet = \
+                          gr.Slider(minimum=0, maximum=2.0, step=0.01, value=0.6, label="Content Scale for Controlnet")
+                scale_c = gr.Slider(minimum=0, maximum=2.0, step=0.01, value=0.6, label="Content Scale for IP-Adapter")
                 scale_s = gr.Slider(minimum=0, maximum=2.0, step=0.01, value=1.0, label="Style Scale")
+                
                 with gr.Accordion(open=False, label="Advanced Options"):
 
                     guidance_scale = gr.Slider(minimum=1, maximum=15.0, step=0.01, value=7.0, label="guidance scale")
                     num_samples = gr.Slider(minimum=1, maximum=4.0, step=1.0, value=1.0, label="num samples")
-                    num_inference_steps = gr.Slider(minimum=5, maximum=100.0, step=1.0, value=50,
-                                                    label="num inference steps")
-                    seed = gr.Slider(minimum=-1000000, maximum=1000000, value=1, step=1, label="Seed Value")
-                    randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+                    num_steps = gr.Slider(minimum=5, maximum=100.0, step=1.0, value=50, label="num inference steps")
+                    seed = gr.Slider(minimum=-1_000_000, maximum=1_000_000, value=1, step=1, label="Seed Value")
+                    random_seed = gr.Checkbox(label="Random seed", value=True)
 
                 generate_button = gr.Button("Generate Image")
 
@@ -316,7 +290,7 @@ with block:
 
         generate_button.click(
             fn=randomize_seed_fn,
-            inputs=[seed, randomize_seed],
+            inputs=[seed, random_seed],
             outputs=seed,
             queue=False,
             api_name=False,
@@ -330,15 +304,16 @@ with block:
                     scale_s,
                     guidance_scale,
                     num_samples,
-                    num_inference_steps,
+                    num_steps,
                     seed,
                     target,],
-            outputs=[generated_image])
+            outputs=[generated_image],
+        )
 
     gr.Examples(
         examples=get_example(),
-        inputs=[content_image_pil,style_image_pil,target, prompt,scale_c_controlnet, scale_c, scale_s],
         fn=run_for_examples,
+        inputs=[content_image_pil, style_image_pil, target, prompt, scale_c_controlnet, scale_c, scale_s],
         outputs=[generated_image],
         cache_examples=True,
     )
@@ -346,3 +321,4 @@ with block:
     gr.Markdown(article)
 
 block.launch(server_name="0.0.0.0", server_port=1234)
+
