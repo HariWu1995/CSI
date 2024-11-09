@@ -50,7 +50,7 @@ We are actively updating and improving this repository. If you find any bugs or 
 
 ## Pipeline 	💻
 <p align="center">
-  <img src="assets/image3_1.jpg">
+  <img src="assets/CSGO/image3_1.jpg">
 </p>
 
 ## Capabilities 🚅 
@@ -60,7 +60,7 @@ We are actively updating and improving this repository. If you find any bugs or 
   🔥 For more results, visit our <a href="https://csgo-gen.github.io"><strong>homepage</strong></a> 🔥
 
 <p align="center">
-  <img src="assets/vis.jpg">
+  <img src="assets/CSGO/vis.jpg">
 </p>
 
 
@@ -107,111 +107,111 @@ mv TTPLanet_SDXL_Controlnet_Tile_Realistic/TTPLANET_Controlnet_Tile_realistic_v2
 ### 3. Inference 🚀
 
 ```python
-import torch
-from ip_adapter.utils import BLOCKS as BLOCKS
-from ip_adapter.utils import controlnet_BLOCKS as controlnet_BLOCKS
 from PIL import Image
+
+import torch
 from diffusers import (
     AutoencoderKL,
     ControlNetModel,
-    StableDiffusionXLControlNetPipeline,
-
+    StableDiffusionXLControlNetPipeline as SDXLControlnetPipeline,
 )
+
 from ip_adapter import CSGO
+from ip_adapter.utils import BLOCKS
+from ip_adapter.utils import controlnet_BLOCKS
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-base_model_path =  "./base_models/stable-diffusion-xl-base-1.0"  
+base_model_path = "./base_models/stable-diffusion-xl-base-1.0"  
+auto_encoder_path = "./base_models/sdxl-vae-fp16-fix"
 image_encoder_path = "./base_models/IP-Adapter/sdxl_models/image_encoder"
-csgo_ckpt = "./CSGO/csgo.bin"
-pretrained_vae_name_or_path ='./base_models/sdxl-vae-fp16-fix'
 controlnet_path = "./base_models/TTPLanet_SDXL_Controlnet_Tile_Realistic"
-weight_dtype = torch.float16
 
+csgo_ckpt = "./CSGO/csgo.bin"
 
-vae = AutoencoderKL.from_pretrained(pretrained_vae_name_or_path,torch_dtype=torch.float16)
-controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16,use_safetensors=True)
-pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    base_model_path,
-    controlnet=controlnet,
-    torch_dtype=torch.float16,
-    add_watermarker=False,
-    vae=vae
-)
+autoencoder = AutoencoderKL.from_pretrained(auto_encoder_path, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16, use_safetensors=True)
+pipe = SDXLControlnetPipeline.from_pretrained(base_model_path, torch_dtype=torch.float16,
+                                                controlnet=controlnet, vae=autoencoder, add_watermarker=False)
 pipe.enable_vae_tiling()
-
 
 target_content_blocks = BLOCKS['content']
 target_style_blocks = BLOCKS['style']
+
 controlnet_target_content_blocks = controlnet_BLOCKS['content']
 controlnet_target_style_blocks = controlnet_BLOCKS['style']
 
-csgo = CSGO(pipe, image_encoder_path, csgo_ckpt, device, num_content_tokens=4,num_style_tokens=32,
-                          target_content_blocks=target_content_blocks, target_style_blocks=target_style_blocks,controlnet=False,controlnet_adapter=True,
-                              controlnet_target_content_blocks=controlnet_target_content_blocks, 
-                              controlnet_target_style_blocks=controlnet_target_style_blocks,
-                              content_model_resampler=True,
-                              style_model_resampler=True,
-                              load_controlnet=False,
-
-                              )
+csgo = CSGO(pipe, image_encoder_path, csgo_ckpt, device, 
+            num_content_tokens=4,
+            num_style_tokens=32,
+            target_content_blocks=target_content_blocks, 
+            target_style_blocks=target_style_blocks,
+            controlnet=False,
+            controlnet_adapter=True,
+            controlnet_target_content_blocks=controlnet_target_content_blocks, 
+            controlnet_target_style_blocks=controlnet_target_style_blocks,
+            content_model_resampler=True,
+            style_model_resampler=True,
+            load_controlnet=False, )
 
 style_name = 'img_0.png'
 content_name = 'img_0.png'
-style_image = "../assets/{}".format(style_name)
-content_image = Image.open('../assets/{}'.format(content_name)).convert('RGB')
+style_image = f"../assets/CSGO/{style_name}"
+content_image = f"../assets/CSGO/{content_name}"
 
-caption ='a small house with a sheep statue on top of it'
+content_image = Image.open(content_image).convert('RGB')
 
-num_sample=4
+caption = 'a small house with a sheep statue on top of it'
 
-#image-driven style transfer
-images = csgo.generate(pil_content_image= content_image, pil_style_image=style_image,
-                           prompt=caption,
-                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
-                           content_scale=1.0,
-                           style_scale=1.0,
-                           guidance_scale=10,
-                           num_images_per_prompt=num_sample,
-                           num_samples=1,
-                           num_inference_steps=50,
-                           seed=42,
-                           image=content_image.convert('RGB'),
-                           controlnet_conditioning_scale=0.6,
-                          )
+num_samples = 4
 
-#text-driven stylized synthesis
-caption='a cat'
-images = csgo.generate(pil_content_image= content_image, pil_style_image=style_image,
-                           prompt=caption,
-                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
-                           content_scale=1.0,
-                           style_scale=1.0,
-                           guidance_scale=10,
-                           num_images_per_prompt=num_sample,
-                           num_samples=1,
-                           num_inference_steps=50,
-                           seed=42,
-                           image=content_image.convert('RGB'),
-                           controlnet_conditioning_scale=0.01,
-                          )
+# image-driven style transfer
+images = csgo.generate( pil_content_image=content_image, 
+                        pil_style_image=style_image,
+                        prompt=caption,
+               negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                        style_scale=1.0,
+                        content_scale=1.0,
+                        guidance_scale=10,
+                        num_images_per_prompt=num_samples,
+                        num_samples=1,
+                        num_inference_steps=50,
+                        seed=42,
+                        image=content_image,
+                        controlnet_conditioning_scale=0.6, )
 
-#text editing-driven stylized synthesis
-caption='a small house'
-images = csgo.generate(pil_content_image= content_image, pil_style_image=style_image,
-                           prompt=caption,
-                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
-                           content_scale=1.0,
-                           style_scale=1.0,
-                           guidance_scale=10,
-                           num_images_per_prompt=num_sample,
-                           num_samples=1,
-                           num_inference_steps=50,
-                           seed=42,
-                           image=content_image.convert('RGB'),
-                           controlnet_conditioning_scale=0.4,
-                          )
+# text-driven stylized synthesis
+caption = 'a cat'
+images = csgo.generate( pil_content_image=content_image, 
+                        pil_style_image=style_image,
+                        prompt=caption,
+               negative_prompt="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                        style_scale=1.0,
+                        content_scale=1.0,
+                        guidance_scale=10,
+                        num_images_per_prompt=num_samples,
+                        num_samples=1,
+                        num_inference_steps=50,
+                        seed=42,
+                        image=content_image,
+                        controlnet_conditioning_scale=0.01, )
+
+# text editing-driven stylized synthesis
+caption = 'a small house'
+images = csgo.generate( pil_content_image=content_image, 
+                        pil_style_image=style_image,
+                        prompt=caption,
+               negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                        style_scale=1.0,
+                        content_scale=1.0,
+                        guidance_scale=10,
+                        num_images_per_prompt=num_samples,
+                        num_samples=1,
+                        num_inference_steps=50,
+                        seed=42,
+                        image=content_image,
+                        controlnet_conditioning_scale=0.4,)
 ```
 ### 4 Gradio interface ⚙️
 
@@ -230,26 +230,26 @@ If you don't have the resources to configure it, we provide an online [demo](htt
 
 ### Content-Style Composition
 <p align="center">
-  <img src="assets/page1.png">
+  <img src="assets/CSGO/page1.png">
 </p>
 
 <p align="center">
-  <img src="assets/page4.png">
+  <img src="assets/CSGO/page4.png">
 </p>
 
 ### Cycle Translation
 <p align="center">
-  <img src="assets/page8.png">
+  <img src="assets/CSGO/page8.png">
 </p>
 
 ### Text-Driven Style Synthesis
 <p align="center">
-  <img src="assets/page10.png">
+  <img src="assets/CSGO/page10.png">
 </p>
 
 ### Text Editing-Driven Style Synthesis
 <p align="center">
-  <img src="assets/page11.jpg">
+  <img src="assets/CSGO/page11.jpg">
 </p>
 
 ## Star History
