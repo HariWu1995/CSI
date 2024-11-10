@@ -118,7 +118,7 @@ from diffusers import (
 
 from ip_adapter import CSGO
 from ip_adapter.utils import BLOCKS
-from ip_adapter.utils import controlnet_BLOCKS
+from ip_adapter.utils import CTRLNET_BLOCKS
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -139,8 +139,8 @@ pipe.enable_vae_tiling()
 target_content_blocks = BLOCKS['content']
 target_style_blocks = BLOCKS['style']
 
-controlnet_target_content_blocks = controlnet_BLOCKS['content']
-controlnet_target_style_blocks = controlnet_BLOCKS['style']
+controlnet_target_content_blocks = CTRLNET_BLOCKS['content']
+controlnet_target_style_blocks = CTRLNET_BLOCKS['style']
 
 csgo = CSGO(pipe, image_encoder_path, csgo_ckpt, device, 
             num_content_tokens=4,

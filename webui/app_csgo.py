@@ -14,12 +14,10 @@ import cv2
 from PIL import Image
 
 from transformers import BlipProcessor, BlipForConditionalGeneration as BlipGenerator
-from transformers import AutoImageProcessor, AutoModel
 from diffusers import AutoencoderKL, ControlNetModel, \
                     StableDiffusionXLControlNetPipeline as SDXLControlnetPipeline
 
-from ip_adapter.utils import BLOCKS as BLOCKS
-from ip_adapter.utils import controlnet_BLOCKS as controlnet_BLOCKS
+from ip_adapter.utils import BLOCKS, CTRLNET_BLOCKS
 from ip_adapter.utils import resize_content
 from ip_adapter import CSGO
 
@@ -47,8 +45,8 @@ blip_generator = BlipGenerator.from_pretrained(image_caption_path).to(device)
 target_content_blocks = BLOCKS['content']
 target_style_blocks = BLOCKS['style']
 
-controlnet_target_content_blocks = controlnet_BLOCKS['content']
-controlnet_target_style_blocks = controlnet_BLOCKS['style']
+controlnet_target_content_blocks = CTRLNET_BLOCKS['content']
+controlnet_target_style_blocks = CTRLNET_BLOCKS['style']
 
 csgo = CSGO(pipe, image_encoder_path, cs_adapter_path, device, 
             num_content_tokens=4, 
